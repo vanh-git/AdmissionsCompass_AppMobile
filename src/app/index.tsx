@@ -1,23 +1,34 @@
-import { useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { BottomNavigation } from '@/components/BottomNavigation';
 import { useAuth } from '@/context/AuthContext';
 import { LoginScreen } from '@/screens/LoginScreen';
-import { GuideScreen } from '@/screens/GuideScreen';
-import { BottomNavigation } from '@/components/BottomNavigation';
+import { OnboardingScreen } from '@/screens/OnboardingScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
 export default function AppRoot() {
   const { user, loading } = useAuth();
-  const [showGuide, setShowGuide] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check if user has seen the guide
-    if (user && !showGuide) {
-      // Check localStorage or AsyncStorage to see if guide was shown
-      setShowGuide(true);
-    }
-  }, [user]);
+    const checkOnboarding = async () => {
+      try {
+        if (Platform.OS === 'web') {
+          // Always show onboarding on web for continuous checking
+          setShowOnboarding(true);
+          return;
+        }
 
-  if (loading) {
+        const seen = await AsyncStorage.getItem('hasSeenOnboarding');
+        setShowOnboarding(seen !== 'true');
+      } catch (e) {
+        setShowOnboarding(true);
+      }
+    };
+    checkOnboarding();
+  }, []);
+
+  if (loading || showOnboarding === null) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#059669" />
@@ -25,14 +36,24 @@ export default function AppRoot() {
     );
   }
 
-  if (!user) {
-    return <LoginScreen />;
+  if (showOnboarding) {
+    return (
+      <OnboardingScreen
+        onComplete={async () => {
+          if (Platform.OS === 'web') {
+            // On web: allow user to proceed to Login but keep onboarding shown on fresh opens
+            setShowOnboarding(false);
+            return;
+          }
+          await AsyncStorage.setItem('hasSeenOnboarding', 'true');
+          setShowOnboarding(false);
+        }}
+      />
+    );
   }
 
-  if (showGuide) {
-    return (
-      <GuideScreen onComplete={() => setShowGuide(false)} />
-    );
+  if (!user) {
+    return <LoginScreen />;
   }
 
   return <BottomNavigation />;
